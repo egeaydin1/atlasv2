@@ -7,6 +7,9 @@ from anthropic import Anthropic
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
+import qdrant_client as qc
+print(f"Qdrant Client Version: {qc.__version__}")
+
 app = FastAPI()
 
 # Configuration

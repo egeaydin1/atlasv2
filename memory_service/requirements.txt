@@ -2,6 +2,6 @@ fastapi
 uvicorn
 anthropic
 openai
-qdrant-client>=1.7.0
+qdrant-client==1.9.1
 pydantic
 python-dotenv
