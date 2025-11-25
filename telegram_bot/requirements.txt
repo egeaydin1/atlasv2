@@ -1,1 +1,2 @@
-# No dependencies yet
+python-telegram-bot
+requests
