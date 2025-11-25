@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # INFRASTRUCTURE
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: atlas_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_password}
+      POSTGRES_DB: ${POSTGRES_DB:-atlas_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - atlas_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: atlas_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - atlas_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: atlas_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - atlas_network
+
+  # ---------------------------------------------------------------------------
+  # MICROSERVICES
+  # ---------------------------------------------------------------------------
+  
+  # 1. API Gateway
+  api_gateway:
+    build: ./api_gateway
+    container_name: atlas_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_password}@postgres:5432/${POSTGRES_DB:-atlas_db}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - atlas_network
+
+  # 2. Memory Service (The Core)
+  memory_service:
+    build: ./memory_service
+    container_name: atlas_memory
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_password}@postgres:5432/${POSTGRES_DB:-atlas_db}
+      - QDRANT_URL=http://qdrant:6333
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    networks:
+      - atlas_network
+
+  # 3. Scheduler Service
+  scheduler_service:
+    build: ./scheduler_service
+    container_name: atlas_scheduler
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_password}@postgres:5432/${POSTGRES_DB:-atlas_db}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - atlas_network
+
+  # 4. Voice Service
+  voice_service:
+    build: ./voice_service
+    container_name: atlas_voice
+    ports:
+      - "8002:8000"
+    environment:
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    networks:
+      - atlas_network
+
+  # 5. Integration Hub
+  integration_hub:
+    build: ./integration_hub
+    container_name: atlas_integrations
+    ports:
+      - "8003:8000"
+    environment:
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - INTRA_42_CLIENT_ID=${INTRA_42_CLIENT_ID}
+    networks:
+      - atlas_network
+
+  # 6. Telegram Bot Service
+  telegram_bot:
+    build: ./telegram_bot
+    container_name: atlas_telegram
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GATEWAY_URL=http://api_gateway:8000
+    networks:
+      - atlas_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+
+networks:
+  atlas_network:
+    driver: bridge
