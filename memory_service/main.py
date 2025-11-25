@@ -45,6 +45,7 @@ def get_embedding(text: str) -> List[float]:
     return response.data[0].embedding
 
 def search_context(query_vector: List[float], limit: int = 5) -> str:
+    # Use search method explicitly
     hits = qdrant_client.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
@@ -53,17 +54,17 @@ def search_context(query_vector: List[float], limit: int = 5) -> str:
     return "\n".join([hit.payload["text"] for hit in hits if hit.payload])
 
 def save_memory(text: str, vector: List[float]):
+    import uuid
     qdrant_client.upsert(
         collection_name=COLLECTION_NAME,
         points=[
             models.PointStruct(
-                id=None,  # Auto-generate ID (requires Qdrant 1.7+) or use UUID
+                id=str(uuid.uuid4()),
                 vector=vector,
                 payload={"text": text}
             )
         ]
     )
-    # Note: For older Qdrant versions, ID generation might be needed manually using uuid.uuid4().hex
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
